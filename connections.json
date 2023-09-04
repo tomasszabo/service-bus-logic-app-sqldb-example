@@ -1,0 +1,25 @@
+{
+  "managedApiConnections": {},
+  "serviceProviderConnections": {
+    "serviceBus": {
+      "parameterValues": {
+        "connectionString": "@appsetting('ServiceBus_connectionString')"
+      },
+      "parameterSetName": "connectionString",
+      "serviceProvider": {
+        "id": "/serviceProviders/ServiceBus"
+      },
+      "displayName": "service-bus-test-conn-01"
+    },
+    "sql": {
+      "parameterValues": {
+        "connectionString": "@appsetting('sql_connectionString')"
+      },
+      "parameterSetName": "connectionString",
+      "serviceProvider": {
+        "id": "/serviceProviders/sql"
+      },
+      "displayName": "sql-test-conn-01"
+    }
+  }
+}
