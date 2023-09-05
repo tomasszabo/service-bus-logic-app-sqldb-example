@@ -23,6 +23,7 @@ resource vault 'Microsoft.KeyVault/vaults@2021-11-01-preview' = {
       defaultAction: 'Allow'
       bypass: 'AzureServices'
     }
+    publicNetworkAccess: 'Disabled'
   }
 }
 

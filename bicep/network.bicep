@@ -22,6 +22,8 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
       {
         name: subnetLogicAppName
         properties: {
+          privateEndpointNetworkPolicies: 'Enabled'
+          privateLinkServiceNetworkPolicies: 'Enabled'
           addressPrefix: subnetLogicAppPrefix
           delegations: [
             {
@@ -36,6 +38,8 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
       {
         name: subnetPrivateEndpointsName
         properties: {
+          privateEndpointNetworkPolicies: 'Disabled'
+          privateLinkServiceNetworkPolicies: 'Enabled'
           addressPrefix: subnetPrivateEndpointsPrefix
         }
       }

@@ -60,9 +60,22 @@ module serviceBusModule './serviceBus.bicep' = {
   }
 }
 
+module storageModule './storage.bicep' = {
+  name: 'storageModule'
+  dependsOn: [
+    keyVaultModule
+  ]
+  params: {
+    location: location
+    prefix: prefix
+    keyVaultName: keyVaultModule.outputs.keyVaultName
+  }
+}
+
 module privateEndpointsModule './private-endpoints.bicep' = {
   name: 'privateEndpointsModule'
   dependsOn: [
+    keyVaultModule
     networkModule
     databaseModule
     serviceBusModule
@@ -74,31 +87,26 @@ module privateEndpointsModule './private-endpoints.bicep' = {
     sqlName: databaseModule.outputs.sqlName
     subnetName: networkModule.outputs.privateEndpointsSubnetName
     serviceBusNamespaceName: serviceBusModule.outputs.serviceBusNamespaceName
+    storageAccountName: storageModule.outputs.storageAccountName
+    keyVaultName: keyVaultModule.outputs.keyVaultName
   }
 }
 
 module logicAppModule './logicapp.bicep' = {
-  name: 'computeModule'
+  name: 'logicAppModule'
   dependsOn: [
     sharedModule
+    privateEndpointsModule
   ]
   params: {
     location: location
     prefix: prefix
+    keyVaultName: keyVaultModule.outputs.keyVaultName
     appInsightsConnectionString: sharedModule.outputs.appInsightsConnectionString
     sqlDbKeyVaultUri: databaseModule.outputs.connectionStringKeyVaultUri
     serviceBusKeyVaultUri: serviceBusModule.outputs.connectionStringKeyVaultUri
     subnetLogicAppId: networkModule.outputs.subnetLogicAppId
-  }
-}
-
-module keyVaultAccessPolicyModule './keyVaultAccessPolicy.bicep' = { 
-  name: 'keyVaultAccessPolicyModule'
-  dependsOn: [
-    logicAppModule
-  ]
-  params: {
-    keyVaultName: keyVaultModule.outputs.keyVaultName
-    applicationIds: logicAppModule.outputs.applicationIds
+    storageAccountName: storageModule.outputs.storageAccountName
+    storageKeyVaultSecretUri: storageModule.outputs.connectionStringKeyVaultUri
   }
 }

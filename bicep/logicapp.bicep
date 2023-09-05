@@ -1,22 +1,34 @@
 
 param location string
 param prefix string
+param keyVaultName string
 param appInsightsConnectionString string
 param sqlDbKeyVaultUri string
 param serviceBusKeyVaultUri string
 param subnetLogicAppId string
+param storageKeyVaultSecretUri string
+param storageAccountName string
 
-param storageAccountName string = '${prefix}blob${uniqueString(resourceGroup().id)}'
 param hostingPlanName string = '${prefix}-logicapp-asp-${uniqueString(resourceGroup().id)}'
 param logicAppName string = '${prefix}-logicapp-${uniqueString(resourceGroup().id)}'
 
-resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = {
+resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' existing = {
   name: storageAccountName
-  location: location
-  sku: {
-    name: 'Standard_LRS'
+}
+
+resource fileShares 'Microsoft.Storage/storageAccounts/fileServices@2022-09-01' existing = {
+  name: 'default'
+  parent: storageAccount
+}
+
+// create file share for logic app (created automatically when deploying manually in Azure Portal, in IaC need to create it manually)
+resource logicAppFileShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2022-09-01' = {
+  name: logicAppName
+  parent: fileShares
+  properties: {
+    accessTier: 'TransactionOptimized'
+    enabledProtocols: 'SMB'
   }
-  kind: 'StorageV2'
 }
 
 resource hostingPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
@@ -40,48 +52,6 @@ resource logicApp 'Microsoft.Web/sites@2022-09-01' = {
     serverFarmId: hostingPlan.id
     virtualNetworkSubnetId: subnetLogicAppId
     siteConfig: {
-      appSettings: [
-        {
-          name: 'APP_KIND'
-          value: 'workflowApp'
-        }
-        {
-          name: 'AzureFunctionsJobHost__extensionBundle__id'
-          value: 'Microsoft.Azure.Functions.ExtensionBundle.Workflows'
-        }
-        {
-          name: 'AzureFunctionsJobHost__extensionBundle__version'
-          value: '[1.*, 2.0.0)'
-        }
-        {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(logicAppName)
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsightsConnectionString
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'node'
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~18'
-        }
-      ]
       connectionStrings: [
         {
           name: 'sql_connectionString'
@@ -103,7 +73,7 @@ resource logicApp 'Microsoft.Web/sites@2022-09-01' = {
       minTlsVersion: '1.2'
       use32BitWorkerProcess: false
       netFrameworkVersion: '6.0'
-      functionsRuntimeScaleMonitoringEnabled: true
+      functionsRuntimeScaleMonitoringEnabled: false
       vnetRouteAllEnabled: true
     }
     
@@ -111,4 +81,32 @@ resource logicApp 'Microsoft.Web/sites@2022-09-01' = {
   }
 }
 
-output applicationIds array = [logicApp.identity.principalId]
+// need to grant access to KeyVault for Logic App first before we can set the app settings
+module keyVaultAccessPolicyModule './keyVaultAccessPolicy.bicep' = { 
+  name: 'keyVaultAccessPolicyModule'
+  params: {
+    keyVaultName: keyVaultName
+    applicationIds: [logicApp.identity.principalId]
+  }
+}
+
+resource logicAppSettings 'Microsoft.Web/sites/config@2022-09-01' = {
+  parent: logicApp
+  name: 'appsettings'
+  dependsOn: [
+    keyVaultAccessPolicyModule
+  ]
+  properties: {
+    APP_KIND: 'workflowApp'
+    AzureFunctionsJobHost__extensionBundle__id: 'Microsoft.Azure.Functions.ExtensionBundle.Workflows'
+    AzureFunctionsJobHost__extensionBundle__version: '[1.*, 2.0.0)'
+    AzureWebJobsStorage: '@Microsoft.KeyVault(SecretUri=${storageKeyVaultSecretUri})'
+    WEBSITE_CONTENTAZUREFILECONNECTIONSTRING: '@Microsoft.KeyVault(SecretUri=${storageKeyVaultSecretUri})'
+    WEBSITE_CONTENTSHARE: toLower(logicAppName)
+    WEBSITE_CONTENTOVERVNET: '1'
+    FUNCTIONS_EXTENSION_VERSION: '~4'
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsightsConnectionString
+    FUNCTIONS_WORKER_RUNTIME: 'node'
+    WEBSITE_NODE_DEFAULT_VERSION: '~18'
+  }
+}
